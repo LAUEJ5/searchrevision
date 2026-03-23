@@ -75,16 +75,51 @@
       <aside class="notesPanel" id="notesPanel" aria-label="Notes" aria-hidden="true">
         <header class="notesHeader">
           <div class="notesTitle">Notes</div>
-          <button class="notesClose" id="notesCloseBtn" type="button" aria-label="Close notes">✕</button>
+          <div class="notesActions">
+            <button class="notesBtn" id="notesNewBtn" type="button">New</button>
+            <button class="notesBtn notesBtnPrimary" id="notesSaveBtn" type="button">Save</button>
+            <button class="notesClose" id="notesCloseBtn" type="button" aria-label="Close notes">✕</button>
+          </div>
         </header>
+        <div class="notesSubHeader">
+          <div class="notesDocLabel" id="notesDocLabel">Draft</div>
+          <div class="notesFields" aria-label="Note metadata">
+            <input
+              class="notesFieldInput notesTitleInput"
+              id="notesTitle"
+              type="text"
+              placeholder="Title"
+              autocomplete="off"
+              spellcheck="true"
+            />
+            <input
+              class="notesFieldInput notesFolderInput"
+              id="notesFolder"
+              type="text"
+              placeholder="Folder"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+        </div>
         <div
           class="notesEditor"
           id="notesEditor"
-          contenteditable="true"
-          role="textbox"
-          aria-multiline="true"
-          spellcheck="true"
+          role="group"
+          aria-label="Notes editor"
         ></div>
+        <div class="notesSaved">
+          <div class="notesSavedHeader">
+            <div class="notesSavedHeaderLeft">
+              <button class="notesBtn notesBtnTertiary" id="notesSavedBackBtn" type="button" hidden>
+                Back
+              </button>
+              <div class="notesSavedTitle" id="notesSavedTitle">Saved notes</div>
+            </div>
+            <button class="notesBtn notesBtnDanger" id="notesClearBtn" type="button">Clear notes</button>
+          </div>
+          <div class="notesSavedList" id="notesSavedList"></div>
+        </div>
       </aside>
     </main>
 

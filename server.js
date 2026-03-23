@@ -1,4 +1,6 @@
 const path = require("path");
+const fs = require("fs/promises");
+const crypto = require("crypto");
 const express = require("express");
 require("dotenv").config();
 
@@ -6,9 +8,205 @@ const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
 app.disable("x-powered-by");
+app.use(express.json({ limit: "1mb" }));
+
+const NOTES_ROOT = path.join(__dirname, "data", "notes");
+
+function safeSegment(input) {
+  const raw = String(input || "").trim();
+  // allow letters, numbers, space, underscore, dash
+  const cleaned = raw.replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+  return cleaned || "Inbox";
+}
+
+function safeFilename(input) {
+  const raw = String(input || "").trim();
+  const cleaned = raw.replace(/[^a-zA-Z0-9 _-]/g, "").trim().replace(/\s+/g, " ");
+  return cleaned || "Untitled";
+}
+
+function toSlug(input) {
+  return String(input)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "")
+    .slice(0, 80);
+}
+
+function decodeNoteId(id) {
+  const raw = String(id || "");
+  if (!raw) return null;
+  let rel = "";
+  try {
+    rel = Buffer.from(raw, "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+  if (!rel.includes("/") || rel.includes("..")) return null;
+  const [folder, filename] = rel.split("/");
+  if (!folder || !filename) return null;
+  if (!filename.endsWith(".md")) return null;
+  return { folder, filename, rel };
+}
+
+async function fileExists(fullPath) {
+  try {
+    await fs.access(fullPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+let draft = {
+  id: crypto.randomUUID(),
+  title: "",
+  folder: "Inbox",
+  text: "",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
+});
+
+app.get("/api/notes/draft", async (_req, res) => {
+  res.json(draft);
+});
+
+app.put("/api/notes/draft", async (req, res) => {
+  const title = typeof req.body?.title === "string" ? req.body.title : draft.title;
+  const folder = typeof req.body?.folder === "string" ? req.body.folder : draft.folder;
+  const text = typeof req.body?.text === "string" ? req.body.text : "";
+  draft = { ...draft, title, folder, text, updatedAt: new Date().toISOString() };
+  res.json({ ok: true, id: draft.id, updatedAt: draft.updatedAt });
+});
+
+app.post("/api/notes/draft/new", async (_req, res) => {
+  draft = {
+    id: crypto.randomUUID(),
+    title: "",
+    folder: "Inbox",
+    text: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  res.json(draft);
+});
+
+app.post("/api/notes/save", async (req, res) => {
+  const title = safeFilename(req.body?.title);
+  const requestedFolder = safeSegment(req.body?.folder);
+  const text = typeof req.body?.text === "string" ? req.body.text : "";
+  const incomingId = typeof req.body?.id === "string" ? req.body.id : "";
+
+  await fs.mkdir(NOTES_ROOT, { recursive: true });
+
+  // If client provides an existing note id, overwrite that same file (no new filename).
+  const decoded = decodeNoteId(incomingId);
+  let folder = requestedFolder;
+  let filename = "";
+  let filePath = "";
+
+  if (decoded) {
+    folder = decoded.folder;
+    filename = decoded.filename;
+    filePath = path.join(NOTES_ROOT, folder, filename);
+    if (!(await fileExists(filePath))) {
+      return res.status(404).json({ error: "Saved note no longer exists", details: { id: incomingId } });
+    }
+  } else {
+    const dir = path.join(NOTES_ROOT, folder);
+    await fs.mkdir(dir, { recursive: true });
+
+    const base = toSlug(title) || "note";
+    // Prevent duplicates: if any existing file in the folder matches this title slug
+    // (including old suffix forms like my-title-2.md), reject the save.
+    const existing = await fs.readdir(dir).catch(() => []);
+    const re = new RegExp(`^${escapeRegex(base)}(?:-\\d+)?\\.md$`, "i");
+    const hasDuplicate = existing.some((name) => re.test(String(name)));
+    if (hasDuplicate) {
+      return res.status(409).json({
+        error: "A note with this title already exists in this folder",
+        details: { folder, title, slug: base }
+      });
+    }
+
+    filename = `${base}.md`;
+    filePath = path.join(dir, filename);
+  }
+
+  const header = `# ${title}\n\nSaved: ${new Date().toISOString()}\nFolder: ${folder}\n\n---\n\n`;
+  await fs.writeFile(filePath, header + text + "\n", "utf8");
+
+  res.json({
+    ok: true,
+    folder,
+    title,
+    filename,
+    id: Buffer.from(`${folder}/${filename}`).toString("base64url")
+  });
+});
+
+app.get("/api/notes/list", async (_req, res) => {
+  try {
+    await fs.mkdir(NOTES_ROOT, { recursive: true });
+    const folders = await fs.readdir(NOTES_ROOT, { withFileTypes: true });
+    const out = [];
+
+    for (const f of folders) {
+      if (!f.isDirectory()) continue;
+      const folder = f.name;
+      const dir = path.join(NOTES_ROOT, folder);
+      const files = await fs.readdir(dir, { withFileTypes: true });
+      for (const file of files) {
+        if (!file.isFile()) continue;
+        if (!file.name.endsWith(".md")) continue;
+        out.push({
+          id: Buffer.from(`${folder}/${file.name}`).toString("base64url"),
+          folder,
+          filename: file.name
+        });
+      }
+    }
+
+    // newest first by filename timestamp prefix
+    out.sort((a, b) => b.filename.localeCompare(a.filename));
+    res.json({ items: out });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to list notes" });
+  }
+});
+
+app.get("/api/notes/open", async (req, res) => {
+  try {
+    const id = String(req.query.id || "");
+    if (!id) return res.status(400).json({ error: "Missing query param: id" });
+    const decoded = decodeNoteId(id);
+    if (!decoded) return res.status(400).json({ error: "Invalid id" });
+    const full = path.join(NOTES_ROOT, decoded.rel);
+    const text = await fs.readFile(full, "utf8");
+    res.json({ ok: true, id, folder: decoded.folder, filename: decoded.filename, text });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to open note" });
+  }
+});
+
+app.post("/api/notes/clear", async (_req, res) => {
+  try {
+    // Delete everything under data/notes (all folders + all saved notes).
+    await fs.rm(NOTES_ROOT, { recursive: true, force: true });
+    await fs.mkdir(NOTES_ROOT, { recursive: true });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to clear notes" });
+  }
 });
 
 app.get("/api/search", async (req, res) => {
@@ -164,10 +362,21 @@ app.get("/api/search", async (req, res) => {
 });
 
 const publicDir = path.join(__dirname, "public");
-app.use(express.static(publicDir));
+app.use(
+  express.static(publicDir, {
+    etag: false,
+    lastModified: false,
+    setHeaders(res) {
+      // This is a simple dev app; disable caching so JS/CSS changes apply immediately.
+      res.setHeader("Cache-Control", "no-store");
+    }
+  })
+);
 
-// SPA-ish fallback (so /?q= works when refreshed)
-app.get("*", (_req, res) => {
+// SPA-ish fallback (so /?q= and /wiki/... work on refresh)
+// Important: never treat /api/* as SPA routes.
+app.get(/^\/(?!api\/).*/, (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   res.sendFile(path.join(publicDir, "index.html"));
 });
 
