@@ -1,144 +1,91 @@
-# Basic Chrome-like Search Page
+# Notetakr
 
-A tiny “Chrome new tab”-style search page that calls a backend `/api/search` endpoint.
+Notetakr is a Chrome extension that gives you a **side-panel notes app** while you browse.
 
-This project uses a **search provider API** because building a real web search engine (crawling, indexing, ranking) isn’t something you can reasonably build inside an app like this.
+## Install (unpacked)
 
-## Run it
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select the `public/` folder in this repo
 
-```bash
-npm install
-cp .env.example .env
-npm run dev
-```
+## What it does
 
-Then open `http://localhost:3000`.
+- **Side panel notes editor** with `New`, `Open`, and `Save` to `.txt`
+- **Highlight text on any webpage** → click **Add to notes** popup to append it
+- **Per-line return icons (↩)** store the page URL + scroll position and can reopen that context
+- **Add to search**: highlight text in notes, or hover a word, to search it in your current tab
 
-## Simplest mode: Wikipedia-only (no keys, no subscriptions)
+## Files
 
-This is the default and requires **no API keys**.
+- Extension entrypoint: `public/manifest.json`
+- Background service worker: `public/sw.js`
+- Shared constants: `public/shared/constants.js`
+- Side panel UI: `public/panel.html`, `public/panel.css`, `public/panel/…`
+- Webpage clipper popup: `public/clipper/…`, `public/clipper.css`
+- Icon: `public/icon.png`
 
-In `.env`:
+## Architecture at a glance
 
-```dotenv
-SEARCH_PROVIDER=wikipedia
-```
+Notetakr is split into three execution environments (Chrome MV3):
 
-## Choose a provider
+- **Side panel page** (the notes UI): `public/panel.html` + `public/panel/…`
+- **Content script** (runs on every site): `public/clipper/…`
+- **Service worker** (background logic): `public/sw.js` + `public/sw/…`
 
-Set `SEARCH_PROVIDER` in `.env`:
+### Data model
 
-- `SEARCH_PROVIDER=wikipedia` (free, simple, Wikipedia-only)
-- `SEARCH_PROVIDER=bing` (recommended: works for new projects)
-- `SEARCH_PROVIDER=google` (only works if your Google project has access)
+- **Draft note** lives in `chrome.storage.local` under the key `notes_draft_v1`.
+- The draft contains:
+  - `text`: the note body as a single string with `\n` newlines
+  - `lineLinks`: an array aligned to the `text.split("\n")` lines, where each entry is either `null` or:
+    - `{ url, scrollY, ts }`
 
-## Google Search API (why you’re getting 403)
+Design choice: this keeps the editor simple (plain text) while still allowing per-line “return to source” links.
 
-If you see:
+### How the pieces talk to each other
 
-> “This project does not have the access to Custom Search JSON API.”
+#### Side panel ↔ service worker (“API” calls)
 
-That’s because Google’s own docs now say the **Custom Search JSON API is not available for new customers** (and it’s scheduled for discontinuation on **Jan 1, 2027**). If your project is “new,” Google will keep returning 403 even if you configured `cx` and an API key correctly.
+The side panel can’t call a local Express server (offline extension), so it uses a tiny message-based API:
 
-If you already have access (existing customer), here’s the setup.
+- `panel/api.js` sends `{ type: "apiFetch", url, method, body }`
+- `sw/messages.js` handles it and routes to `sw/api.js` which implements:
+  - `GET /api/notes/draft`
+  - `PUT /api/notes/draft`
+  - `POST /api/notes/draft/new`
 
-## Get the Google Search API (step-by-step)
+This keeps panel code readable: it can look like normal `fetch("/api/…")` without a real server.
 
-You need **two things**:
+#### Webpage clipper → storage (direct write)
 
-- **`GOOGLE_API_KEY`**: a Google Cloud API key
-- **`GOOGLE_CSE_ID`**: a Programmable Search Engine ID (often called `cx`)
+When you highlight text on a webpage and click **Add to notes**:
 
-### 1) Create a Programmable Search Engine (gets you `cx`)
+- `clipper/storage.js` writes directly to `chrome.storage.local` (`notes_draft_v1`)
+- It appends the selected text to `draft.text`
+- It stamps `{ url, scrollY }` into `draft.lineLinks` for each non-empty inserted line
 
-1. Go to Google Programmable Search Engine.
-2. Create a new search engine.
-3. When asked what to search:
-   - If you want “web-like” results: choose **Search the entire web** (sometimes labeled “Search the web”).
-   - If you restrict to certain sites, you’ll only get results from those sites.
-4. Copy the **Search engine ID** — that is your **`GOOGLE_CSE_ID`** (`cx`).
+Design choice: direct storage writes are the most reliable way to sync from a content script (no fragile background “append” pipeline).
 
-### 2) Enable the Custom Search JSON API + create an API key (gets you `key`)
+#### “Return to source” + scroll restore
 
-1. Go to Google Cloud Console.
-2. Create/select a project.
-3. Enable **Custom Search API** (Custom Search JSON API).
-4. Create an **API key** (Credentials → API key).
-5. Put it into `.env` as **`GOOGLE_API_KEY`**.
+- The side panel gutter buttons (↩) call:
+  - `{ type: "openContext", url, scrollY }`
+- The service worker opens a tab and retries `srScrollTo` a few times (content scripts can lag while a tab loads).
 
-#### Important notes
+The scroll helpers live in `clipper/scroll-messages.js`:
+- `srGetScroll`: returns `{ url, scrollY }`
+- `srScrollTo`: scrolls immediately and again after short delays for reliability
 
-- **Quota/billing**: the Custom Search JSON API has quotas and may require billing depending on your usage and current Google policies.
-- **Key security**: treat your API key like a secret; keep it server-side (this app does that).
+### Why the JS is split into many files
 
-## What the app can/can’t “build”
+Chrome extension code runs in different contexts and has no bundler here.
+So we split by responsibility and rely on **deterministic load order**:
 
-### What we can build locally (this repo)
+- Side panel: multiple `<script defer>` tags in `panel.html`
+- Content scripts: ordered `js: [...]` list in `manifest.json`
+- Service worker: `importScripts(...)` in `public/sw.js`
 
-- A good-looking search homepage and results page
-- Query handling, pagination UI (if you want it), “I’m Feeling Lucky”
-- Local features like search history, recent searches, keyboard shortcuts
-
-### What you *cannot* realistically build yourself (you need external APIs)
-
-- **Web crawling and indexing**: discovering pages, fetching them, handling robots.txt/sitemaps, parsing HTML, deduping
-- **Ranking at Google scale**: relevance scoring, link graph, anti-spam, freshness
-- **SERP enrichments**: knowledge panels, “People also ask”, entity cards, etc.
-- **High-quality spell correction / synonyms / intent understanding** at web scale
-
-So the normal architecture is: your UI + your backend + **a search provider API**.
-
-## Other APIs you may want for “basic search” features
-
-Depending on what you consider “basic”, here are common add-ons:
-
-- **Autocomplete / query suggestions**
-  - Options: Bing Autosuggest API, Algolia (if you’re searching your own content), Meilisearch + your own suggestion dictionary
-  - Note: scraping Google’s suggestions endpoint is unreliable and can violate terms.
-
-- **Image search**
-  - Google Custom Search supports `searchType=image` (still quota-limited)
-  - Alternatives: Bing Image Search API
-
-- **News search**
-  - Bing News Search API or a dedicated news provider
-
-- **Safe-search / content moderation**
-  - Some search APIs provide a `safe` flag
-  - For extra moderation, use a content moderation API for thumbnails/snippets
-
-## How the wiring works in this project
-
-- Frontend: `public/index.html`, `public/app.js`
-- Backend: `server.js`
-  - Calls your configured provider server-to-server (`SEARCH_PROVIDER`)
-  - Returns a simplified JSON payload to the frontend
-
-### Backend endpoint
-
-- `GET /api/search?q=YOUR_QUERY`
-
-## Troubleshooting
-
-- If you see: “Server is missing GOOGLE_API_KEY / GOOGLE_CSE_ID”
-  - Ensure you have `.env` (not `.env.example`) and it contains both values.
-
-- If Google returns an error JSON
-  - The UI will show the API error and details. Common causes are:
-    - API not enabled in Cloud Console
-    - Wrong `cx` (CSE ID)
-    - Quota exceeded / billing not set up
-
-## Bing Web Search API (recommended)
-
-1. Create an Azure account/subscription.
-2. In Azure Portal, create a **Bing Search v7** resource (Bing Web Search).
-3. Copy one of the “Keys” from the resource.
-4. Put it into `.env`:
-
-```dotenv
-SEARCH_PROVIDER=bing
-BING_API_KEY=your_key_here
-```
+This makes it easy to skim each area without scrolling through one 900-line file.
 
 

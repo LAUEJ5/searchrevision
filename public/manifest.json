@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Notetakr",
+  "version": "0.1.0",
+  "description": "Notes in the Chrome side panel (works on any site).",
+  "permissions": ["storage", "sidePanel", "downloads", "tabs"],
+  "icons": {
+    "16": "icon.png",
+    "32": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "shared/constants.js",
+        "clipper/state.js",
+        "clipper/selection-ui.js",
+        "clipper/storage.js",
+        "clipper/scroll-messages.js",
+        "clipper/main.js"
+      ],
+      "css": ["clipper.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Notetakr",
+    "default_icon": {
+      "16": "icon.png",
+      "32": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  }
+}
+

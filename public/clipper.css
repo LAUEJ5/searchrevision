@@ -1,0 +1,32 @@
+/* Selection popup injected into webpages */
+
+#srNotesClipBtn {
+  position: fixed;
+  z-index: 2147483647;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(32, 33, 36, 0.18);
+  background: #ffffff;
+  color: #202124;
+  font: 600 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  user-select: none;
+}
+
+#srNotesClipBtn:hover {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+}
+
+#srNotesClipBtn:active {
+  transform: translateY(1px);
+}
+
+#srNotesClipBtn[aria-disabled="true"] {
+  opacity: 0.65;
+  cursor: default;
+}
+

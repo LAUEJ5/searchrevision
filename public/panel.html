@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notes</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="srNotesHeader">
+        <div class="srNotesTitle">Notes</div>
+        <div class="srNotesActions">
+          <button class="srNotesBtn" id="srNotesNewBtn" type="button">New</button>
+          <button class="srNotesBtn" id="srNotesOpenBtn" type="button">Open</button>
+          <button class="srNotesBtn srNotesBtnPrimary" id="srNotesSaveBtn" type="button">Save</button>
+        </div>
+      </header>
+
+      <div class="srNotesSubHeader">
+        <div class="srNotesFields" aria-label="Note metadata">
+          <input class="srNotesFieldInput" id="srNotesTitle" type="text" placeholder="Title" autocomplete="off" spellcheck="true" />
+        </div>
+      </div>
+
+      <div class="srNotesEditorWrap" aria-label="Notes editor">
+        <div class="srNotesEditor" id="srNotesEditor" role="textbox" aria-multiline="true" aria-label="Notes"></div>
+        <div class="srNotesGutter" id="srNotesGutter" aria-label="Line links"></div>
+        <button class="srNotesSearchBtn" id="srNotesSearchBtn" type="button" hidden>Add to search</button>
+      </div>
+    </main>
+
+    <script src="shared/constants.js" defer></script>
+    <script src="panel/state.js" defer></script>
+    <script src="panel/api.js" defer></script>
+    <script src="panel/editor-core.js" defer></script>
+    <script src="panel/line-links.js" defer></script>
+    <script src="panel/file-io.js" defer></script>
+    <script src="panel/search-popup.js" defer></script>
+    <script src="panel/draft-sync.js" defer></script>
+    <script src="panel/keyboard.js" defer></script>
+    <script src="panel/main.js" defer></script>
+  </body>
+</html>
+
