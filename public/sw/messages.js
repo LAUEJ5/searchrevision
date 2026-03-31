@@ -59,6 +59,11 @@
       return true;
     }
 
+    if (msg.type === "openUrl") {
+      (async () => ns.openUrl(msg, sendResponse))();
+      return true;
+    }
+
     if (msg.type === "downloadNotesTxt") {
       (async () => ns.downloadNotesTxt(msg, sendResponse))();
       return true;

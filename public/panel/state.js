@@ -9,6 +9,7 @@
 
   ns.els = {
     newBtn: document.getElementById("srNotesNewBtn"),
+    infoBtn: document.getElementById("srNotesInfoBtn"),
     openBtn: document.getElementById("srNotesOpenBtn"),
     saveBtn: document.getElementById("srNotesSaveBtn"),
     titleInput: document.getElementById("srNotesTitle"),
@@ -22,13 +23,8 @@
     lineLinks: [],
     gutterInnerEl: null,
 
-    // Search popup state
+    // Search popup state (selection-based only)
     lastSearchSelection: "",
-    hoverSearchWord: "",
-    hoverRAF: 0,
-    hoverHideT: null,
-    isSearchBtnHovered: false,
-    lastHoverWordRect: null,
 
     // Draft save debounce
     saveT: null

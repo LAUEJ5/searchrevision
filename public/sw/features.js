@@ -96,6 +96,38 @@
     }
   };
 
+  ns.openUrl = async function openUrl(msg, sendResponse) {
+    try {
+      const url = String(msg?.url || "").trim();
+      if (!url) return sendResponse({ ok: false, error: "Missing url" });
+      if (!/^https?:\/\//i.test(url)) return sendResponse({ ok: false, error: "Invalid url" });
+
+      chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+        const err = chrome.runtime.lastError;
+        if (err) return sendResponse({ ok: false, error: String(err.message || err) });
+        const tab = Array.isArray(tabs) ? tabs[0] : null;
+        const tabId = tab?.id;
+
+        if (!tabId) {
+          chrome.tabs.create({ url }, () => {
+            const err2 = chrome.runtime.lastError;
+            if (err2) return sendResponse({ ok: false, error: String(err2.message || err2) });
+            sendResponse({ ok: true });
+          });
+          return;
+        }
+
+        chrome.tabs.update(tabId, { url }, () => {
+          const err2 = chrome.runtime.lastError;
+          if (err2) return sendResponse({ ok: false, error: String(err2.message || err2) });
+          sendResponse({ ok: true });
+        });
+      });
+    } catch (e) {
+      sendResponse({ ok: false, error: String(e?.message || e) });
+    }
+  };
+
   ns.downloadNotesTxt = async function downloadNotesTxt(msg, sendResponse) {
     try {
       const title = String(msg.title || "").trim();
